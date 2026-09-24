@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trellis-asset-pipeline"
+version = "0.1.0"
+description = "Local Codex-oriented image-to-TRELLIS-to-Blender game asset pipeline."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "hkcmoris" }
+]
+dependencies = []
+
+[project.scripts]
+trellis-pipeline = "trellis_pipeline.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
