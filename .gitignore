@@ -1,0 +1,78 @@
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+config/local.*
+config/*.local.*
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node / JavaScript (if tooling is added later)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Generated pipeline output
+output/
+outputs/
+generated/
+artifacts/
+temp/
+tmp/
+cache/
+logs/
+
+# Local models / checkpoints
+models/
+checkpoints/
+*.gguf
+*.safetensors
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Generated 3D assets
+*.glb
+*.gltf
+*.fbx
+*.blend
+*.blend1
+*.obj
+*.ply
+*.stl
+
+# Archives / large local bundles
+*.zip
+*.7z
+*.tar
+*.tar.gz
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python tooling / notebook scratch
+.ipynb_checkpoints/
