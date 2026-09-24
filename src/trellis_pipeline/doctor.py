@@ -112,6 +112,11 @@ def run_doctor(settings: Settings, start_comfyui: bool = False) -> list[Check]:
         [
             _path_check("ComfyUI root", settings.comfyui_root, "dir"),
             _path_check("ComfyUI startup", settings.comfyui_start_bat, "file"),
+            _path_check(
+                "TRELLIS examples",
+                settings.trellis_example_workflows_dir,
+                "dir",
+            ),
             _path_check("ComfyUI workflows", settings.comfyui_workflows_dir, "dir"),
             _path_check("ComfyUI input", settings.comfyui_input_dir, "dir"),
             _path_check("ComfyUI output", settings.comfyui_output_dir, "dir"),

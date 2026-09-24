@@ -7,6 +7,16 @@ import sys
 from .comfy import ComfyUIError, ensure_running, is_running, start, system_stats
 from .config import Settings
 from .doctor import exit_code, run_doctor
+from .workflows import (
+    SOURCE_LABELS,
+    WorkflowError,
+    class_counts,
+    discover_workflows,
+    format_scalar,
+    inspect_workflow,
+    resolve_workflow,
+    suspicious_nodes,
+)
 
 
 def _settings() -> Settings:
@@ -74,6 +84,88 @@ def _comfy_start(_: argparse.Namespace) -> int:
     return 0
 
 
+def _workflows_list(args: argparse.Namespace) -> int:
+    settings = _settings()
+    discovered = discover_workflows(settings)
+    selected_sources = [args.source] if args.source else list(SOURCE_LABELS)
+
+    total = 0
+    for source in selected_sources:
+        label = SOURCE_LABELS[source]
+        workflows = discovered[source]
+        total += len(workflows)
+
+        print(label)
+        if not workflows:
+            print("  (none found)")
+        else:
+            for workflow in workflows:
+                print(f"  {workflow.relative_path}")
+        print()
+
+    return 0 if total else 1
+
+
+def _print_node(node, *, indent: str = "  ") -> None:
+    title = f' "{node.title}"' if node.title else ""
+    print(f"{indent}[{node.node_id}] {node.class_type}{title}")
+
+    for name, value in sorted(node.scalar_inputs.items()):
+        print(f"{indent}    {name}: {format_scalar(value)}")
+
+
+def _workflows_inspect(args: argparse.Namespace) -> int:
+    settings = _settings()
+
+    try:
+        workflow = resolve_workflow(settings, args.workflow, source=args.source)
+        inspection = inspect_workflow(workflow)
+    except WorkflowError as exc:
+        print(f"ERROR    {exc}", file=sys.stderr)
+        return 1
+
+    print(f"Source:   {SOURCE_LABELS[workflow.source]}")
+    print(f"File:     {workflow.path}")
+    print(f"Format:   {inspection.format}")
+    print(f"Nodes:    {len(inspection.nodes)}")
+
+    if inspection.format == "unknown":
+        keys = ", ".join(inspection.top_level_keys) or "(none)"
+        print(f"Top keys: {keys}")
+        print()
+        print("Could not recognize this as a standard ComfyUI UI or API workflow.")
+        return 1
+
+    print()
+    print("NODE CLASSES")
+    for class_type, count in class_counts(inspection.nodes):
+        print(f"  {count:>3}  {class_type}")
+
+    flagged = suspicious_nodes(inspection.nodes)
+    print()
+    print("TRELLIS / PERFORMANCE-RELEVANT NODES")
+    if not flagged:
+        print("  (none matched by name)")
+    else:
+        for node in flagged:
+            _print_node(node)
+
+    if args.all_nodes:
+        print()
+        print("ALL NODES")
+        for node in inspection.nodes:
+            _print_node(node)
+
+    if inspection.format == "ui":
+        print()
+        print(
+            "NOTE: UI workflow widget values are positional, so inspect shows them as "
+            "widget[index] rather than guessing parameter names."
+        )
+
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trellis-pipeline",
@@ -106,6 +198,46 @@ def build_parser() -> argparse.ArgumentParser:
         "start", help="Launch the configured batch file without waiting for readiness."
     )
     start_parser.set_defaults(handler=_comfy_start)
+
+    workflows_parser = subparsers.add_parser(
+        "workflows",
+        help="Discover and inspect ComfyUI/TRELLIS workflow JSON.",
+    )
+    workflows_subparsers = workflows_parser.add_subparsers(
+        dest="workflows_command",
+        required=True,
+    )
+
+    list_parser = workflows_subparsers.add_parser(
+        "list",
+        help="List workflow JSON from examples, user workflows, and this repository.",
+    )
+    list_parser.add_argument(
+        "--source",
+        choices=tuple(SOURCE_LABELS),
+        help="Show only one workflow source.",
+    )
+    list_parser.set_defaults(handler=_workflows_list)
+
+    inspect_parser = workflows_subparsers.add_parser(
+        "inspect",
+        help="Inspect a workflow without modifying it.",
+    )
+    inspect_parser.add_argument(
+        "workflow",
+        help="Filename, stem, or relative path of the workflow to inspect.",
+    )
+    inspect_parser.add_argument(
+        "--source",
+        choices=tuple(SOURCE_LABELS),
+        help="Resolve the workflow only from this source.",
+    )
+    inspect_parser.add_argument(
+        "--all-nodes",
+        action="store_true",
+        help="Print every node in addition to performance-relevant nodes.",
+    )
+    inspect_parser.set_defaults(handler=_workflows_inspect)
 
     return parser
 

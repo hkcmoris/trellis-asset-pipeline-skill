@@ -26,6 +26,8 @@ Implemented:
 - ComfyUI API health check
 - automatic ComfyUI startup using COMFYUI_START_BAT
 - local waiting for ComfyUI startup
+- separate TRELLIS example/user/repo workflow discovery
+- read-only ComfyUI workflow format/node inspection
 
 Not implemented yet:
 
@@ -50,32 +52,25 @@ Computer-control/UI automation is a last resort.
 
 TRELLIS generation can take minutes or longer.
 
-The local orchestration layer should:
-
-1. submit the job
-2. wait using a WebSocket or local polling
-3. collect the result
-4. return one compact completion result to the agent
-
-Do not implement a loop that repeatedly invokes Codex to ask whether generation has finished.
+The local orchestration layer should submit, wait locally, collect the result, and return one compact completion result. Do not repeatedly invoke Codex merely to ask whether generation has finished.
 
 ### 3. Keep machine configuration local
 
-The public repository must never contain machine-specific paths or secrets.
+Local values belong in .env, which is ignored by Git. .env.example documents supported settings.
 
-Local values belong in .env, which is ignored by Git.
+### 4. Treat workflow sources differently
 
-.env.example documents supported settings.
+- TRELLIS_EXAMPLE_WORKFLOWS_DIR: reference workflows shipped with the custom node; read-only.
+- COMFYUI_WORKFLOWS_DIR: user-owned saved/experimental workflows; inspect/import but do not overwrite without explicit instruction.
+- workflows/: repository-owned known-good API workflows; version and optimize here.
 
-### 4. Keep workflows versioned and reusable
+### 5. Keep workflows versioned and reusable
 
 Known-good ComfyUI API workflow JSON belongs under workflows/.
 
-COMFYUI_WORKFLOWS_DIR can point to the user's existing ComfyUI workflow directory for discovery and migration, but do not modify those workflows unless explicitly asked.
-
 Do not dynamically rebuild an entire TRELLIS graph unless there is a strong reason. Prefer loading a known workflow and changing explicit inputs or parameters.
 
-### 5. Optimize scientifically
+### 6. Optimize scientifically
 
 When tuning a workflow:
 
@@ -90,95 +85,42 @@ When tuning a workflow:
 
 The target is the best useful game asset for the requested time/quality budget, not maximum theoretical fidelity.
 
-### 6. Separate generation quality levels
+### 7. Separate generation quality levels
 
-Design around:
-
-- draft
-- balanced
-- quality
+Design around draft, balanced, and quality.
 
 Draft mode should avoid expensive final-only work. Geometry exploration should not require full-resolution final texturing on every attempt.
 
-### 7. Keep the public repository clean
+### 8. Keep the public repository clean
 
-Never commit:
-
-- credentials, API keys, auth tokens, cookies, or secrets
-- private URLs or network details
-- user-specific absolute paths
-- generated assets unless intentionally added as small public test fixtures
-- model weights
-- GGUF, Safetensors, checkpoints, or similar model files
-- private source images
-- machine-specific configuration
-
-## Repository map
-
-~~~text
-.codex/skills/trellis-asset-pipeline/
-    Repo-scoped Codex skill and references
-
-workflows/
-    Versioned ComfyUI/TRELLIS API workflow templates
-
-src/trellis_pipeline/
-    Pipeline CLI, configuration, ComfyUI integration, and future orchestration
-
-blender/
-    Future headless Blender scripts
-
-config/
-    Public/example configuration only
-
-benchmarks/
-    Reproducible benchmark definitions and small textual results
-
-tests/
-    Automated tests
-~~~
+Never commit credentials, private paths/URLs, private source images, generated assets unless deliberately public test fixtures, or model weights/checkpoints.
 
 ## Local commands
 
-Install editable:
+Use the project virtual environment.
 
 ~~~powershell
-py -m pip install -e .
-~~~
-
-Run diagnostics:
-
-~~~powershell
+.\.venv\Scripts\Activate.ps1
 trellis-pipeline doctor
-~~~
-
-Check ComfyUI:
-
-~~~powershell
-trellis-pipeline comfy status
-~~~
-
-Ensure ComfyUI is running:
-
-~~~powershell
 trellis-pipeline comfy ensure
+trellis-pipeline workflows list
+trellis-pipeline workflows inspect <workflow>
 ~~~
 
-When developing commands, preserve equivalent support for:
+Equivalent module invocation should remain supported:
 
 ~~~powershell
-py -m trellis_pipeline ...
+python -m trellis_pipeline ...
 ~~~
 
 ## Configuration
-
-Do not hard-code installation paths.
 
 Supported environment variables currently include:
 
 - COMFYUI_URL
 - COMFYUI_ROOT
 - COMFYUI_START_BAT
+- TRELLIS_EXAMPLE_WORKFLOWS_DIR
 - COMFYUI_WORKFLOWS_DIR
 - COMFYUI_INPUT_DIR
 - COMFYUI_OUTPUT_DIR
@@ -190,38 +132,35 @@ Supported environment variables currently include:
 
 Default ComfyUI development URL is http://127.0.0.1:8188 but must remain overridable.
 
+## Workflow discovery and inspection
+
+Workflow inspection must remain read-only.
+
+For UI-format workflow JSON:
+
+- report node type/title
+- report positional widgets as widget[index]
+- do not invent parameter names from positions
+
+For API-format workflow JSON:
+
+- report class_type
+- report scalar named inputs
+- preserve linked inputs without pretending they are scalar parameters
+
+When a workflow name is ambiguous, require --source or a more specific relative path.
+
 ## ComfyUI integration
 
-Keep the integration layer narrow.
-
-Responsibilities should include:
-
-- validate server availability
-- start the configured local instance when requested
-- submit workflow
-- upload/reference inputs
-- wait for completion locally
-- detect failures
-- retrieve output metadata/files
-- expose concise final status to callers
+Keep the integration layer narrow: availability/startup, workflow submission, input upload/reference, local completion waiting, failure detection, output metadata/files, concise final status.
 
 Avoid leaking raw high-volume ComfyUI event streams into agent context.
-
-The current health check uses /system_stats.
-
-Startup must first check whether the API is already available. Do not launch duplicate ComfyUI instances from ensure behavior.
 
 ## TRELLIS workflows
 
 Treat workflow JSON as source code.
 
-When changing a workflow:
-
-- keep diffs understandable
-- avoid unrelated node reordering/churn
-- document performance-sensitive changes
-- preserve a known-good workflow before major experiments
-- distinguish parameter changes from graph-topology changes
+Keep diffs understandable, avoid unrelated node churn, document performance-sensitive changes, preserve known-good baselines, and distinguish parameter changes from topology changes.
 
 The pipeline should eventually submit API-format workflow JSON to ComfyUI.
 
@@ -229,49 +168,13 @@ The pipeline should eventually submit API-format workflow JSON to ComfyUI.
 
 Blender processing should be deterministic, scriptable, and headless.
 
-Future scripts should be able to:
-
-- import GLB
-- inspect mesh/material/texture data
-- perform explicitly requested cleanup
-- validate transforms and normals
-- optionally simplify/optimize
-- export FBX
-- return machine-readable statistics
-
-Do not apply destructive mesh operations merely because they are available.
-
-## Outputs
-
-Generated user assets belong in ignored local output directories.
-
-A successful full pipeline should eventually report:
-
-- source image path
-- output GLB path
-- output FBX path
-- total generation time
-- Blender processing time
-- vertex/triangle count
-- material count
-- texture dimensions
-- warnings/failures
-
-Keep agent-facing results concise. Detailed logs remain local.
+Do not apply destructive cleanup/decimation merely because it is available.
 
 ## Performance and benchmarking
 
-The initial reference machine may be an RTX 3060 12 GB, but implementation decisions must remain configurable for other hardware.
+The initial reference machine may be an RTX 3060 12 GB, but implementation decisions must remain configurable.
 
-Optimization should prioritize detecting:
-
-- VRAM pressure
-- CPU/GPU offloading
-- unexpectedly low GPU utilization
-- expensive remesh/reconstruction stages
-- excessive sampling steps
-- unnecessarily high intermediate resolutions
-- repeated texture generation during geometry iteration
+Prioritize detecting VRAM pressure, CPU/GPU offloading, low utilization, expensive remesh/reconstruction, excessive sampling, high intermediate resolutions, and repeated final-quality texturing during geometry iteration.
 
 Benchmark data must distinguish measured values from assumptions.
 
@@ -280,37 +183,11 @@ Benchmark data must distinguish measured values from assumptions.
 - Python 3.11+.
 - Prefer the standard library unless a dependency materially improves the project.
 - Keep modules small with narrow responsibilities.
-- Isolate external integrations behind clear interfaces.
-- Keep orchestration testable without a live GPU where practical.
-- Use type hints.
-- Provide actionable errors.
-- Do not swallow exceptions.
+- Use type hints and actionable errors.
 - Keep Windows compatibility in mind.
-- Do not introduce frameworks merely for architecture aesthetics.
-
-## Testing
-
-Where practical, tests should cover:
-
-- config parsing/validation
-- workflow parameter mutation
-- job-state handling
-- output discovery
-- timeout/failure handling
-- Blender command construction
-- benchmark result handling
-
-GPU-heavy integration tests should be optional and separated from fast unit tests.
+- Keep orchestration testable without a live GPU where practical.
 
 ## Documentation
-
-Update README.md when:
-
-- installation steps change
-- supported workflows change
-- command syntax changes
-- required dependencies change
-- generated output behavior changes
 
 Do not document a feature as implemented until the repository actually provides it.
 
@@ -323,5 +200,3 @@ Before a substantial change:
 3. make the smallest coherent change
 4. test what can be tested
 5. summarize behavior changes and known limitations
-
-Favor working incremental automation over an oversized all-at-once pipeline.

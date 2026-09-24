@@ -81,6 +81,7 @@ class Settings:
     comfyui_url: str
     comfyui_root: Path | None
     comfyui_start_bat: Path | None
+    trellis_example_workflows_dir: Path | None
     comfyui_workflows_dir: Path | None
     comfyui_input_dir: Path | None
     comfyui_output_dir: Path | None
@@ -106,6 +107,7 @@ class Settings:
             comfyui_url=comfyui_url,
             comfyui_root=_path_from_env("COMFYUI_ROOT"),
             comfyui_start_bat=_path_from_env("COMFYUI_START_BAT"),
+            trellis_example_workflows_dir=_path_from_env("TRELLIS_EXAMPLE_WORKFLOWS_DIR"),
             comfyui_workflows_dir=_path_from_env("COMFYUI_WORKFLOWS_DIR"),
             comfyui_input_dir=_path_from_env("COMFYUI_INPUT_DIR"),
             comfyui_output_dir=_path_from_env("COMFYUI_OUTPUT_DIR"),

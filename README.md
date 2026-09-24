@@ -2,7 +2,7 @@
 
 A Codex-oriented local pipeline for turning a short asset request into a game-ready 3D asset using image generation, ComfyUI/TRELLIS, and Blender.
 
-> **Status:** early implementation. Repo-scoped Codex skill discovery, local configuration, environment diagnostics, and ComfyUI health-check/auto-start are implemented. Image generation, TRELLIS submission, GLB retrieval, and Blender conversion are the next stages.
+> **Status:** early implementation. Repo-scoped Codex skill discovery, local configuration, environment diagnostics, ComfyUI health-check/auto-start, and read-only workflow discovery/inspection are implemented. Image generation, TRELLIS submission, GLB retrieval, and Blender conversion are the next stages.
 
 ## Goal
 
@@ -52,135 +52,105 @@ asset-pipeline orchestration
 
 Long-running ComfyUI work belongs inside the local orchestration layer. The model should receive a compact result when the job finishes rather than being asked to check progress repeatedly.
 
-## Repository layout
-
-~~~text
-trellis-asset-pipeline-skill/
-├── .codex/
-│   └── skills/
-│       └── trellis-asset-pipeline/
-│           ├── SKILL.md
-│           └── references/
-│               └── workflows.md
-├── src/
-│   └── trellis_pipeline/
-│       ├── __init__.py
-│       ├── __main__.py
-│       ├── cli.py
-│       ├── comfy.py
-│       ├── config.py
-│       └── doctor.py
-├── workflows/
-├── blender/
-├── config/
-├── benchmarks/
-├── tests/
-├── .env.example
-├── .gitignore
-├── pyproject.toml
-├── AGENTS.md
-└── README.md
-~~~
-
 ## Local setup
-
-Clone the repository and create your local configuration:
 
 ~~~powershell
 git clone https://github.com/hkcmoris/trellis-asset-pipeline-skill.git
 cd trellis-asset-pipeline-skill
 
 Copy-Item .env.example .env
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip setuptools
+python -m pip install -e .
 ~~~
 
 Edit .env and set the paths for your machine.
 
-Install the local CLI in editable mode:
-
-~~~powershell
-py -m pip install -e .
-~~~
-
-Run the environment check:
+Run diagnostics:
 
 ~~~powershell
 trellis-pipeline doctor
 ~~~
 
-Or without installing the console entry point:
-
-~~~powershell
-py -m trellis_pipeline doctor
-~~~
-
-If ComfyUI is not running and COMFYUI_START_BAT is configured:
+Ensure ComfyUI is running:
 
 ~~~powershell
 trellis-pipeline comfy ensure
-~~~
-
-You can also ask doctor to start it when necessary:
-
-~~~powershell
-trellis-pipeline doctor --start-comfyui
 ~~~
 
 ## Local configuration
 
-Copy .env.example to .env. The real .env is ignored by Git.
-
-The main settings are:
+The important workflow-related settings are:
 
 ~~~env
-COMFYUI_URL=http://127.0.0.1:8188
-COMFYUI_ROOT=C:\AI\ComfyUI
-COMFYUI_START_BAT=C:\AI\ComfyUI\Start ComfyUI FlashAttention.bat
+TRELLIS_EXAMPLE_WORKFLOWS_DIR=C:\AI\ComfyUI\custom_nodes\ComfyUI-Trellis2-GGUF\example_workflows
 COMFYUI_WORKFLOWS_DIR=C:\AI\ComfyUI\user\default\workflows
-COMFYUI_INPUT_DIR=C:\AI\ComfyUI\input
-COMFYUI_OUTPUT_DIR=C:\AI\ComfyUI\output
-
-BLENDER_EXE=C:\Program Files\Blender Foundation\Blender\blender.exe
-ASSET_OUTPUT_DIR=D:\AI\trellis-assets
-
-COMFYUI_STARTUP_TIMEOUT_SECONDS=120
-COMFYUI_HEALTH_TIMEOUT_SECONDS=3
 ~~~
 
-Paths are examples only. Do not commit your machine-specific .env.
+These have intentionally different roles:
+
+- **TRELLIS examples** are read-only reference workflows shipped with the custom node.
+- **ComfyUI workflows** are your own saved/experimental graphs.
+- **repo workflows/** are known-good pipeline workflows that are safe to version and optimize.
+
+The real .env is ignored by Git.
 
 ## Current CLI
 
-### Doctor
+### Environment and ComfyUI
 
 ~~~powershell
 trellis-pipeline doctor
-~~~
-
-Checks:
-
-- .env discovery
-- ComfyUI URL and API availability
-- ComfyUI root and startup batch file
-- local ComfyUI workflow/input/output directories
-- Blender executable and version
-- NVIDIA GPU visibility through nvidia-smi
-- asset output directory configuration
-
-### ComfyUI status
-
-~~~powershell
+trellis-pipeline doctor --start-comfyui
 trellis-pipeline comfy status
+trellis-pipeline comfy ensure
+trellis-pipeline comfy start
 ~~~
 
-### Ensure ComfyUI is running
+### Workflow discovery
+
+List all three workflow sources:
 
 ~~~powershell
-trellis-pipeline comfy ensure
+trellis-pipeline workflows list
 ~~~
 
-This first checks the configured ComfyUI API. If the server is offline, it launches COMFYUI_START_BAT and waits locally until the API responds or the configured startup timeout expires.
+Limit to one source:
 
-Startup output is written to logs/comfyui-startup.log.
+~~~powershell
+trellis-pipeline workflows list --source examples
+trellis-pipeline workflows list --source user
+trellis-pipeline workflows list --source repo
+~~~
+
+Inspect by filename, stem, or relative path:
+
+~~~powershell
+trellis-pipeline workflows inspect my-tree-workflow
+~~~
+
+If the name exists in more than one source, make it explicit:
+
+~~~powershell
+trellis-pipeline workflows inspect my-tree-workflow --source user
+~~~
+
+To print every node:
+
+~~~powershell
+trellis-pipeline workflows inspect my-tree-workflow --source user --all-nodes
+~~~
+
+Inspection is read-only. It currently:
+
+- detects standard ComfyUI UI vs API workflow JSON
+- counts node classes
+- surfaces TRELLIS/performance-relevant nodes by name
+- prints scalar API inputs
+- prints positional widget values for UI workflows without guessing their parameter names
+
+UI workflow widget values are positional. For reliable parameter-name mutation and API execution, export or convert the graph to API format first.
 
 ## Codex skill
 
@@ -193,53 +163,24 @@ The repo-scoped skill lives at:
 Open this repository as the Codex workspace. You can explicitly invoke it with:
 
 ~~~text
-Use $trellis-asset-pipeline and run its environment check.
+Use $trellis-asset-pipeline and inspect my TRELLIS workflows.
 ~~~
-
-Its description is also written so asset-generation and TRELLIS workflow-optimization requests can trigger it naturally.
 
 ## Workflow policy
 
-Your existing ComfyUI workflow directory is configured using COMFYUI_WORKFLOWS_DIR so Codex and the local tooling can inspect experiments already on your machine.
+Known-good pipeline workflows should eventually be copied/exported into workflows/ and versioned in Git.
 
-Known-good pipeline workflows should eventually be copied/exported into the repository under workflows/ and versioned in Git.
-
-The pipeline should submit **API-format** ComfyUI workflows. UI workflow files are useful as source material but are not automatically equivalent to the JSON accepted by the /prompt API.
+The pipeline should submit **API-format** ComfyUI workflows. UI workflow files are useful as source material but are not automatically equivalent to JSON accepted by the /prompt API.
 
 See .codex/skills/trellis-asset-pipeline/references/workflows.md.
 
 ## Planned generation modes
 
-### Draft
-
-Optimized for iteration:
-
-- fast image-to-3D settings
-- geometry-first generation
-- minimal or no expensive texturing
-- fast Blender export
-
-### Balanced
-
-The intended default:
-
-- sensible geometry quality
-- moderate texture quality
-- basic cleanup and validation
-- FBX export
-
-### Quality
-
-For selected keeper assets:
-
-- higher-quality TRELLIS settings
-- higher-quality textures where useful
-- additional Blender cleanup/validation
-- final FBX export and asset report
+- **draft**: fastest useful geometry iteration; avoid expensive final-only work
+- **balanced**: default game-asset generation
+- **quality**: higher-cost keeper/final asset generation
 
 ## Workflow optimization
-
-A major goal is to tune TRELLIS workflows instead of blindly running expensive graphs.
 
 Optimization should:
 
@@ -257,16 +198,7 @@ The optimizer should eventually produce practical fast, balanced, and quality pr
 
 ## Repository policy
 
-Do not commit:
-
-- model weights or checkpoints
-- GGUF files
-- generated GLB/FBX/Blend assets
-- generated textures and renders
-- API keys or tokens
-- machine-specific .env files
-- private input images
-- user-specific absolute paths
+Do not commit model weights, GGUF/checkpoints, generated assets, API keys, machine-specific .env files, private input images, or user-specific absolute paths.
 
 See .gitignore and AGENTS.md for project rules.
 
