@@ -51,6 +51,19 @@ def _startup_log_path(settings: Settings) -> Path:
     return path
 
 
+def _startup_log_tail(settings: Settings, max_lines: int = 30) -> str:
+    path = _startup_log_path(settings)
+    if not path.is_file():
+        return ""
+
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return ""
+
+    return "\n".join(lines[-max_lines:]).strip()
+
+
 def start(settings: Settings) -> subprocess.Popen[bytes]:
     if settings.comfyui_start_bat is None:
         raise ComfyUIError(
@@ -71,14 +84,18 @@ def start(settings: Settings) -> subprocess.Popen[bytes]:
         )
 
     comspec = os.environ.get("COMSPEC", "cmd.exe")
-    command = f'call "{batch_file}"'
+    # Pass a raw Windows command line instead of a list here. Python's Windows
+    # list-to-command-line quoting escapes nested quotes with backslashes,
+    # which cmd.exe does not interpret as quote escapes. The classic doubled
+    # quote form is required for a quoted batch-file path after /c.
+    command_line = f'"{comspec}" /d /s /c ""{batch_file}""'
     creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
     log_path = _startup_log_path(settings)
 
     log_handle = log_path.open("ab", buffering=0)
     try:
         process = subprocess.Popen(
-            [comspec, "/d", "/s", "/c", command],
+            command_line,
             cwd=str(cwd),
             stdin=subprocess.DEVNULL,
             stdout=log_handle,
@@ -91,7 +108,10 @@ def start(settings: Settings) -> subprocess.Popen[bytes]:
     return process
 
 
-def wait_until_ready(settings: Settings) -> dict[str, Any]:
+def wait_until_ready(
+    settings: Settings,
+    process: subprocess.Popen[bytes] | None = None,
+) -> dict[str, Any]:
     deadline = time.monotonic() + settings.comfyui_startup_timeout_seconds
     last_error: Exception | None = None
 
@@ -100,12 +120,24 @@ def wait_until_ready(settings: Settings) -> dict[str, Any]:
             return system_stats(settings)
         except ComfyUIError as exc:
             last_error = exc
-            time.sleep(2.0)
+
+        if process is not None:
+            return_code = process.poll()
+            if return_code not in (None, 0):
+                tail = _startup_log_tail(settings)
+                detail = f"\n\nStartup log tail:\n{tail}" if tail else ""
+                raise ComfyUIError(
+                    f"ComfyUI startup process exited with code {return_code}.{detail}"
+                )
+
+        time.sleep(2.0)
 
     detail = f" Last error: {last_error}" if last_error else ""
+    tail = _startup_log_tail(settings)
+    log_detail = f"\n\nStartup log tail:\n{tail}" if tail else ""
     raise ComfyUIError(
         "ComfyUI did not become ready within "
-        f"{settings.comfyui_startup_timeout_seconds:g} seconds.{detail}"
+        f"{settings.comfyui_startup_timeout_seconds:g} seconds.{detail}{log_detail}"
     )
 
 
@@ -114,6 +146,6 @@ def ensure_running(settings: Settings) -> tuple[str, dict[str, Any]]:
         stats = system_stats(settings)
         return "already-running", stats
     except ComfyUIError:
-        start(settings)
-        stats = wait_until_ready(settings)
+        process = start(settings)
+        stats = wait_until_ready(settings, process=process)
         return "started", stats
