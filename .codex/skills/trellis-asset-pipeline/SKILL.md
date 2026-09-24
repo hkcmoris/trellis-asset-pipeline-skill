@@ -13,18 +13,36 @@ Prefer the local pipeline and APIs over GUI automation.
 
 Do not repeatedly invoke the model to watch a long TRELLIS render. Long waits must happen inside local tooling using WebSocket events or local polling, and the tool should return a compact completion result.
 
-## Environment bootstrap
+## Pipeline location and invocation
 
-Before pipeline work:
+This skill may be loaded globally while Codex is working in another repository.
+
+Resolve the pipeline in this order:
+
+1. If TRELLIS_PIPELINE_ROOT is set, use that repository.
+2. Otherwise, if the current workspace is the TRELLIS asset pipeline repository, use the current repository.
+3. Otherwise, tell the user to run scripts/install-global-skill.ps1 from the pipeline repository. Do not guess its location.
+
+When TRELLIS_PIPELINE_ROOT is available, invoke every pipeline command through its own virtual environment:
 
 ~~~powershell
-python -m trellis_pipeline doctor
+& "$env:TRELLIS_PIPELINE_ROOT\.venv\Scripts\python.exe" -m trellis_pipeline <args>
+~~~
+
+Do not depend on the current workspace Python, active virtual environment, .env, or PATH entry.
+
+## Environment bootstrap
+
+Before pipeline work, run:
+
+~~~powershell
+& "$env:TRELLIS_PIPELINE_ROOT\.venv\Scripts\python.exe" -m trellis_pipeline doctor
 ~~~
 
 If ComfyUI is offline:
 
 ~~~powershell
-python -m trellis_pipeline comfy ensure
+& "$env:TRELLIS_PIPELINE_ROOT\.venv\Scripts\python.exe" -m trellis_pipeline comfy ensure
 ~~~
 
 If configuration is incomplete, inspect .env.example and tell the user exactly which local .env values are missing or invalid.
@@ -52,7 +70,7 @@ Never replace these with guessed user-specific paths.
 Before guessing about a local TRELLIS graph, inspect what is actually present:
 
 ~~~powershell
-python -m trellis_pipeline workflows list
+& "$env:TRELLIS_PIPELINE_ROOT\.venv\Scripts\python.exe" -m trellis_pipeline workflows list
 ~~~
 
 Sources:
@@ -64,7 +82,7 @@ Sources:
 Inspect without modifying:
 
 ~~~powershell
-python -m trellis_pipeline workflows inspect <name>
+& "$env:TRELLIS_PIPELINE_ROOT\.venv\Scripts\python.exe" -m trellis_pipeline workflows inspect <name>
 ~~~
 
 Use --source examples|user|repo when needed. Use --all-nodes when the full graph summary is useful.

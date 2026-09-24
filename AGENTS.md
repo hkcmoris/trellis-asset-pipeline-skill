@@ -95,6 +95,22 @@ Draft mode should avoid expensive final-only work. Geometry exploration should n
 
 Never commit credentials, private paths/URLs, private source images, generated assets unless deliberately public test fixtures, or model weights/checkpoints.
 
+## Cross-workspace execution
+
+The pipeline may be invoked while Codex is working in another repository such as a game project.
+
+When TRELLIS_PIPELINE_ROOT is set, use the pipeline repository own virtual environment:
+
+~~~powershell
+& "$env:TRELLIS_PIPELINE_ROOT\.venv\Scripts\python.exe" -m trellis_pipeline <args>
+~~~
+
+Do not assume the current workspace contains trellis_pipeline, .env, or the pipeline .venv.
+
+The root-level scripts/install-global-skill.ps1 installs the repo skill globally via a junction and sets TRELLIS_PIPELINE_ROOT as a user environment variable.
+
+If TRELLIS_PIPELINE_ROOT is absent and the current workspace is this pipeline repository, local invocation is fine. Otherwise report that global setup is required rather than guessing a path.
+
 ## Local commands
 
 Use the project virtual environment.

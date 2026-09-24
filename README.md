@@ -79,6 +79,31 @@ Ensure ComfyUI is running:
 trellis-pipeline comfy ensure
 ~~~
 
+## Use the skill from any Codex workspace
+
+The pipeline repository can stay separate from the game project. To make the skill available while Codex is opened on Supamon or any other workspace, run this once from the pipeline repository:
+
+~~~powershell
+.\scripts\install-global-skill.ps1
+~~~
+
+The installer:
+
+- creates a junction at ~/.codex/skills/trellis-asset-pipeline pointing to this repo skill
+- sets the user environment variable TRELLIS_PIPELINE_ROOT to this repository
+- checks whether .venv\Scripts\python.exe can import trellis_pipeline
+- refuses to replace an unrelated existing global skill directory
+
+Restart Codex after running the installer so the new user environment variable is inherited.
+
+From any workspace, the reliable pipeline invocation is:
+
+~~~powershell
+& "$env:TRELLIS_PIPELINE_ROOT\.venv\Scripts\python.exe" -m trellis_pipeline doctor
+~~~
+
+The skill uses the same pattern for all pipeline commands, so the active workspace does not need its own Python environment or .env. The machine-specific .env remains in the TRELLIS pipeline repository.
+
 ## Local configuration
 
 The important workflow-related settings are:
