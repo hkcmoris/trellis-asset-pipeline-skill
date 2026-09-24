@@ -27,9 +27,20 @@ SUSPICIOUS_TERMS = (
     "shape",
 )
 
+_WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+_WINDOWS_INVALID_FILENAME_CHARS = set('<>:"/\\|?*')
+
 
 class WorkflowError(RuntimeError):
-    """Raised when workflow discovery or inspection cannot continue."""
+    """Raised when workflow discovery, inspection, or cloning cannot continue."""
 
 
 @dataclass(frozen=True)
@@ -60,6 +71,14 @@ class WorkflowInspection:
     format: str
     nodes: list[NodeSummary]
     top_level_keys: list[str]
+
+
+@dataclass(frozen=True)
+class WorkflowCloneResult:
+    source: WorkflowFile
+    destination: Path
+    format: str
+    overwritten: bool
 
 
 def workflow_roots(settings: Settings) -> dict[str, Path | None]:
@@ -178,6 +197,98 @@ def detect_format(data: Any) -> str:
     return "unknown"
 
 
+def _safe_workflow_filename(name: str) -> str:
+    cleaned = name.strip()
+    if not cleaned:
+        raise WorkflowError("Destination workflow name cannot be empty.")
+
+    if cleaned in {".", ".."} or Path(cleaned).name != cleaned:
+        raise WorkflowError(
+            "Destination workflow name must be a filename, not a path or directory."
+        )
+
+    if any(ord(char) < 32 or char in _WINDOWS_INVALID_FILENAME_CHARS for char in cleaned):
+        raise WorkflowError(
+            "Destination workflow name contains characters that are invalid on Windows."
+        )
+
+    if cleaned.endswith((" ", ".")):
+        raise WorkflowError(
+            "Destination workflow name cannot end with a space or period on Windows."
+        )
+
+    filename = cleaned if cleaned.lower().endswith(".json") else f"{cleaned}.json"
+    stem = Path(filename).stem.upper()
+
+    if stem in _WINDOWS_RESERVED_NAMES:
+        raise WorkflowError(
+            f"Destination workflow name {cleaned!r} is reserved on Windows."
+        )
+
+    return filename
+
+
+def clone_workflow_to_user(
+    settings: Settings,
+    query: str,
+    *,
+    source: str | None,
+    name: str,
+    overwrite: bool = False,
+) -> WorkflowCloneResult:
+    workflow = resolve_workflow(settings, query, source=source)
+
+    if settings.comfyui_workflows_dir is None:
+        raise WorkflowError(
+            "COMFYUI_WORKFLOWS_DIR is not configured. Set it in the local .env first."
+        )
+
+    destination_root = settings.comfyui_workflows_dir
+
+    if destination_root.exists() and not destination_root.is_dir():
+        raise WorkflowError(
+            f"COMFYUI_WORKFLOWS_DIR is not a directory: {destination_root}"
+        )
+
+    destination_root.mkdir(parents=True, exist_ok=True)
+
+    filename = _safe_workflow_filename(name)
+    destination = destination_root / filename
+
+    source_resolved = workflow.path.resolve()
+    destination_resolved = destination.resolve()
+
+    if source_resolved == destination_resolved:
+        raise WorkflowError(
+            "Source and destination are the same file. Use a new workflow name."
+        )
+
+    data = _load_json(workflow.path)
+    workflow_format = detect_format(data)
+
+    destination_exists = destination.exists()
+    if destination_exists and not overwrite:
+        raise WorkflowError(
+            f"Destination already exists: {destination}. "
+            "Choose a new name or pass --overwrite explicitly."
+        )
+
+    try:
+        source_bytes = workflow.path.read_bytes()
+        destination.write_bytes(source_bytes)
+    except OSError as exc:
+        raise WorkflowError(
+            f"Could not copy workflow to {destination}: {exc}"
+        ) from exc
+
+    return WorkflowCloneResult(
+        source=workflow,
+        destination=destination,
+        format=workflow_format,
+        overwritten=destination_exists,
+    )
+
+
 def _is_scalar(value: Any) -> bool:
     return value is None or isinstance(value, (str, int, float, bool))
 
@@ -200,7 +311,11 @@ def _api_nodes(data: dict[str, Any], wrapped: bool = False) -> list[NodeSummary]
             }
 
         meta = node.get("_meta")
-        title = meta.get("title") if isinstance(meta, dict) and isinstance(meta.get("title"), str) else None
+        title = (
+            meta.get("title")
+            if isinstance(meta, dict) and isinstance(meta.get("title"), str)
+            else None
+        )
 
         nodes.append(
             NodeSummary(

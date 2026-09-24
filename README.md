@@ -2,7 +2,7 @@
 
 A Codex-oriented local pipeline for turning a short asset request into a game-ready 3D asset using image generation, ComfyUI/TRELLIS, and Blender.
 
-> **Status:** early implementation. Repo-scoped Codex skill discovery, local configuration, environment diagnostics, ComfyUI health-check/auto-start, and read-only workflow discovery/inspection are implemented. Image generation, TRELLIS submission, GLB retrieval, and Blender conversion are the next stages.
+> **Status:** early implementation. Repo-scoped Codex skill discovery, local configuration, environment diagnostics, ComfyUI health-check/auto-start, read-only workflow discovery/inspection, and guarded workflow cloning into the user workflow folder are implemented. Image generation, TRELLIS submission, GLB retrieval, and Blender conversion are the next stages.
 
 ## Goal
 

@@ -11,6 +11,7 @@ from .workflows import (
     SOURCE_LABELS,
     WorkflowError,
     class_counts,
+    clone_workflow_to_user,
     discover_workflows,
     format_scalar,
     inspect_workflow,
@@ -166,6 +167,29 @@ def _workflows_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _workflows_clone(args: argparse.Namespace) -> int:
+    settings = _settings()
+
+    try:
+        result = clone_workflow_to_user(
+            settings,
+            args.workflow,
+            source=args.source,
+            name=args.name,
+            overwrite=args.overwrite,
+        )
+    except WorkflowError as exc:
+        print(f"ERROR    {exc}", file=sys.stderr)
+        return 1
+
+    action = "OVERWROTE" if result.overwritten else "COPIED"
+    print(action)
+    print(f"Source:      [{result.source.source}] {result.source.path}")
+    print(f"Destination: {result.destination}")
+    print(f"Format:      {result.format}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trellis-pipeline",
@@ -201,7 +225,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     workflows_parser = subparsers.add_parser(
         "workflows",
-        help="Discover and inspect ComfyUI/TRELLIS workflow JSON.",
+        help="Discover, inspect, and copy ComfyUI/TRELLIS workflow JSON.",
     )
     workflows_subparsers = workflows_parser.add_subparsers(
         dest="workflows_command",
@@ -238,6 +262,32 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print every node in addition to performance-relevant nodes.",
     )
     inspect_parser.set_defaults(handler=_workflows_inspect)
+
+    clone_parser = workflows_subparsers.add_parser(
+        "clone",
+        help="Copy a workflow into the configured user workflow directory.",
+    )
+    clone_parser.add_argument(
+        "workflow",
+        help="Filename, stem, or relative path of the source workflow.",
+    )
+    clone_parser.add_argument(
+        "--source",
+        choices=tuple(SOURCE_LABELS),
+        required=True,
+        help="Source to copy from. Examples should normally use --source examples.",
+    )
+    clone_parser.add_argument(
+        "--name",
+        required=True,
+        help="New filename in COMFYUI_WORKFLOWS_DIR. .json is added automatically.",
+    )
+    clone_parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Explicitly allow replacing an existing destination file.",
+    )
+    clone_parser.set_defaults(handler=_workflows_clone)
 
     return parser
 
