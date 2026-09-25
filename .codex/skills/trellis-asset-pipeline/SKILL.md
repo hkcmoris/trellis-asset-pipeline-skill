@@ -13,6 +13,33 @@ Prefer the local pipeline and APIs over GUI automation.
 
 Do not repeatedly invoke the model to watch a long TRELLIS render. Long waits must happen inside local tooling using WebSocket events or local polling, and the tool should return a compact completion result.
 
+## Long-running job policy — mandatory
+
+A long TRELLIS, ComfyUI, Blender, baking, or conversion job must **not** become an agent-side progress loop.
+
+After starting a long job:
+
+- do not poll ComfyUI from separate agent turns
+- do not repeatedly call queue/history/status endpoints to estimate completion
+- do not read or tail the job log while it is still running
+- do not narrate quarter/half/step percentages to the user
+- do not emit "still working" updates based on sampler steps
+- do not turn WebSocket progress events into model/tool responses
+
+WebSocket or polling progress belongs entirely inside a local worker process. Intermediate events may be written to a local file for debugging, but they are not agent context.
+
+Until the native pipeline generation worker exists, wrap any improvised long-running command with:
+
+~~~powershell
+& "$env:TRELLIS_PIPELINE_ROOT\.venv\Scripts\python.exe" -m trellis_pipeline quiet-run --log "$env:TRELLIS_PIPELINE_ROOT\logs\asset-job.log" -- <command> <args...>
+~~~
+
+`quiet-run` blocks until the child exits and redirects all child stdout/stderr to the local log. It prints only a final exit code, duration, and log path. On failure it may print the final log tail **after** the child has exited.
+
+Once a long-running command has been launched through `quiet-run`, wait for that single tool invocation to return. Do not launch side-channel progress checks.
+
+When the native `trellis-pipeline generate` command is implemented, it must follow the same final-only output contract.
+
 ## Pipeline location and invocation
 
 This skill may be loaded globally while Codex is working in another repository.

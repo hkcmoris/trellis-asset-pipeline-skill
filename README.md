@@ -133,6 +133,18 @@ trellis-pipeline comfy ensure
 trellis-pipeline comfy start
 ~~~
 
+### Quiet execution for long jobs
+
+Until the native `trellis-pipeline generate` worker is implemented, run any long TRELLIS/ComfyUI/Blender command through:
+
+~~~powershell
+trellis-pipeline quiet-run --log logs\asset-job.log -- <command> <args...>
+~~~
+
+The child process may produce thousands of progress lines; they are written only to the local log. The CLI blocks and prints a compact result only after the process exits. This prevents Codex from waking up to narrate sampler steps such as "quarter complete" or repeatedly polling ComfyUI.
+
+On failure, the final log tail is shown after the child has stopped.
+
 ### Workflow discovery
 
 List all three workflow sources:

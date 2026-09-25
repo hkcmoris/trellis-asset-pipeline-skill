@@ -54,6 +54,20 @@ TRELLIS generation can take minutes or longer.
 
 The local orchestration layer should submit, wait locally, collect the result, and return one compact completion result. Do not repeatedly invoke Codex merely to ask whether generation has finished.
 
+### 2a. Long jobs are final-only at the agent boundary
+
+All intermediate ComfyUI/TRELLIS progress must stay inside the local process.
+
+Do not expose sampler steps, percentages, WebSocket progress events, queue polling, or periodic "still running" checks to Codex. Do not read a live log from agent turns.
+
+For any improvised long-running command before the native generation worker exists, use:
+
+~~~powershell
+python -m trellis_pipeline quiet-run --log <local-log> -- <command> <args...>
+~~~
+
+The wrapper must block, capture stdout/stderr to disk, and return only after completion. A failed process may expose its log tail after exit.
+
 ### 3. Keep machine configuration local
 
 Local values belong in .env, which is ignored by Git. .env.example documents supported settings.
@@ -119,6 +133,7 @@ Use the project virtual environment.
 .\.venv\Scripts\Activate.ps1
 trellis-pipeline doctor
 trellis-pipeline comfy ensure
+trellis-pipeline quiet-run --log logs\\job.log -- <long-command> <args...>
 trellis-pipeline workflows list
 trellis-pipeline workflows inspect <workflow>
 ~~~

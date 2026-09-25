@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 import sys
 
 from .comfy import ComfyUIError, ensure_running, is_running, start, system_stats
 from .config import Settings
 from .doctor import exit_code, run_doctor
+from .quiet import default_log_path, run_quiet, tail_log
 from .workflows import (
     SOURCE_LABELS,
     WorkflowError,
@@ -190,12 +192,76 @@ def _workflows_clone(args: argparse.Namespace) -> int:
     return 0
 
 
+
+def _quiet_run(args: argparse.Namespace) -> int:
+    settings = _settings()
+    command = list(args.command)
+
+    if command and command[0] == "--":
+        command = command[1:]
+
+    if not command:
+        print("ERROR    quiet-run requires a command after --.", file=sys.stderr)
+        return 2
+
+    log_path = args.log if args.log is not None else default_log_path(settings.repo_root)
+
+    try:
+        result = run_quiet(
+            command,
+            log_path=log_path,
+            cwd=args.cwd,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"ERROR    {exc}", file=sys.stderr)
+        return 1
+
+    status = "OK" if result.returncode == 0 else "ERROR"
+    print(f"{status:<8} quiet command finished")
+    print(f"Exit:     {result.returncode}")
+    print(f"Duration: {result.duration_seconds:.1f}s")
+    print(f"Log:      {result.log_path}")
+
+    if result.returncode != 0:
+        tail = tail_log(result.log_path)
+        if tail:
+            print()
+            print("LOG TAIL")
+            print(tail)
+
+    return result.returncode
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="trellis-pipeline",
         description="Local tooling for the TRELLIS asset pipeline.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+
+    quiet_parser = subparsers.add_parser(
+        "quiet-run",
+        help=(
+            "Run a long command silently, write all child output to a local log, "
+            "and print only a final result."
+        ),
+    )
+    quiet_parser.add_argument(
+        "--log",
+        type=Path,
+        help="Log file. Defaults to logs/quiet-run-<timestamp>.log in the pipeline repo.",
+    )
+    quiet_parser.add_argument(
+        "--cwd",
+        type=Path,
+        help="Optional working directory for the child process.",
+    )
+    quiet_parser.add_argument(
+        "command",
+        nargs=argparse.REMAINDER,
+        help="Command to run. Put -- before the child command for clarity.",
+    )
+    quiet_parser.set_defaults(handler=_quiet_run)
 
     doctor_parser = subparsers.add_parser(
         "doctor", help="Check local pipeline configuration and dependencies."
